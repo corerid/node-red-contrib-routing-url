@@ -8,6 +8,7 @@
         }
     },
     "keywords": [ "node-red" ],
+    "license": "MIT",
     "dependencies": {
         "path-to-regexp": "^6.2.2"
     }
