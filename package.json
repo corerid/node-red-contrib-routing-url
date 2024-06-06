@@ -1,5 +1,5 @@
 {
-    "name": "node-red-contrib-routing-url",
+    "name": "node-red-contrib-url-routing",
     "version": "1.0.0",
     "description": "A Node-RED custom node for routing HTTP requests based on conditions.",
     "node-red": {
