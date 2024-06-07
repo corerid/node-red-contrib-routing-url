@@ -1,5 +1,5 @@
 <script type="text/javascript">
-    const methods = ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'];
+    const methods = ['POST', 'GET', 'PUT', 'DELETE', 'PATCH'];
 
     RED.nodes.registerType('routing', {
         category: 'network',
@@ -7,13 +7,27 @@
         defaults: {
             name: { value: "" },
             outputs: { value: 1 },
-            conditions: { value: [], required: true }
+            conditions: { value: [], validate: function(v) {
+                console.log(v);
+                    if (v.length === 0) {
+                        return false;
+                    }
+
+                    for (var i = 0; i < v.length; i++) {
+                        if (!v[i].path || v[i].path.trim() === "") {
+                            return false;
+                        }
+                    }
+
+                    return true;
+                } 
+            }
         },
         inputs: 1,
         outputs: 1,
         outputLabels: function(index) {
             var node = this;
-            return node.conditions[index].path;
+            return  node.conditions[index].method + " " + node.conditions[index].path;
         },      
         icon: "switch.svg",
         label: function() {
@@ -21,9 +35,6 @@
         },
         oneditprepare: function() {
             var node = this;
-
-            $('#node-input-conditions-container').append('<button id="add-route" class="node-input-add-button">Add Route</button>');
-            $('#node-input-conditions-container').append('<ol id="sortable" class="node-input-conditions-container-list"></ol>');
 
             $('#add-route').click(function(e) {
                 e.preventDefault();
@@ -36,7 +47,7 @@
                     <select class="node-input-condition-method"> \
                     </select> \
                     <input type="text" class="node-input-condition-path" placeholder="Condition"> \
-                    <button class="remove-condition node-input-remove-button"><i class="fa fa-remove" style="color:#FFF;"></i></button> \
+                    <button class="remove-condition node-input-remove-button"><i class="fa fa-trash-o" style="color:#FFF;"></i></button> \
                 </li>');
                 methods.forEach(function(methodItem) {
                     var selected = methodItem === method ? ' selected="selected"' : '';
@@ -47,18 +58,13 @@
                 
                 newCondition.find('.remove-condition').click(function() {
                     newCondition.remove();
-                    updateOutputs();
                 });
 
-                updateOutputs();
             }
 
              // Make the conditions sortable
              $('#sortable').sortable({
                 axis: 'y',
-                update: function(event, ui) {
-                    updateOutputs();
-                }
             });
 
             // Load existing conditions if any, otherwise add a default condition
@@ -70,13 +76,6 @@
                     addCondition(condition.path, condition.method);
                 });
             }
-
-            function updateOutputs() {
-                var numberOfConditions = $('#node-input-conditions-container .node-input-condition').length;
-                $('#node-output-count').val(numberOfConditions);
-            }
-
-            updateOutputs();
         },
         oneditsave: function() {
             var conditions = [];
@@ -85,7 +84,7 @@
                 var path = $(this).find('.node-input-condition-path').val().trim();
                 var method = $(this).find('.node-input-condition-method').val();
 
-                if (path === "") {
+                if (!path) {
                     isValid = false;
                     $(this).find('.node-input-condition-path').css('border', '1px solid red');
                 } else {
@@ -119,12 +118,34 @@
         <input type="text" id="node-input-name" placeholder="Name">
     </div>
     <div class="form-row">
-        <div id="node-input-conditions-container"></div>
+        <div id="node-input-conditions-container">
+            <button id="add-route" class="node-input-add-button">
+                <i class="fa fa-plus" style="color:#FFF;"></i> Add Route
+            </button>
+            <ol id="sortable" class="node-input-conditions-container-list"></ol>
+        </div>
     </div>
 </script>
 
-<script type="text/html" data-help-name="lower-case">
-    <p>A simple node that converts the message payloads into all lower-case characters</p>
+<script type="text/html" data-help-name="routing">
+    <h2>Routing Node</h2>
+    <p>
+        The Routing Node allows you to route HTTP requests based on specified conditions.
+        You can define multiple conditions, each with a specific HTTP method and path pattern.
+    </p>
+    <h3>Configuration</h3>
+    <p>
+        In the configuration dialog, you can add multiple routing conditions. Each condition consists of:
+    </p>
+    <ul>
+        <li><b>Method:</b> The HTTP method (e.g., GET, POST, PUT, DELETE, PATCH).</li>
+        <li><b>Path:</b> The path pattern to match (e.g., /, /courses, /courses/:id, /*).</li>
+    </ul>
+    <h3>Outputs</h3>
+    <p>
+        The node will have one output for each condition you define. When an HTTP request matches a condition, 
+        the message will be sent to the corresponding output. If no conditions match, the message will not be sent to any output.
+    </p>
 </script>
 
 <style type="text/css">
