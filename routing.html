@@ -7,28 +7,24 @@
         defaults: {
             name: { value: "" },
             outputs: { value: 1 },
-            conditions: { value: [], validate: function(v) {
-                console.log(v);
-                    if (v.length === 0) {
-                        return false;
-                    }
-
-                    for (var i = 0; i < v.length; i++) {
-                        if (!v[i].path || v[i].path.trim() === "") {
-                            return false;
-                        }
-                    }
-
-                    return true;
-                } 
-            }
+            conditions: { value: [] }
         },
         inputs: 1,
         outputs: 1,
         outputLabels: function(index) {
             var node = this;
-            return  node.conditions[index].method + " " + node.conditions[index].path;
-        },      
+            let result = "";
+            for (const condition of node.conditions) {
+                for (const path of condition.paths) {
+                    if (path.index === index) {
+                    result = condition.method + " " + path.value;
+                    break;
+                    }
+                }
+                if (result) break;
+            }
+            return result;
+        },
         icon: "switch.svg",
         label: function() {
             return this.name || "routing";
@@ -36,34 +32,95 @@
         oneditprepare: function() {
             var node = this;
 
-            $('#add-route').click(function(e) {
-                e.preventDefault();
-                addCondition();
-            });
+            // Create the unselected method section at the top
+            var unselectedSection = $('#section-unselected');
+            if (unselectedSection.length === 0) {
+                unselectedSection = $('<div id="section-unselected" class="method-section"><ul class="sortable"></ul></div>');
+                $('#unselected-method-container').prepend(unselectedSection);
+            }
 
-            function addCondition(path = "", method = "") {
+            unselectedSection.find('ul').css('margin-left', '0');
+
+            function addCondition(method = "", path = "") {
+                var sectionId = method ? 'section-' + method : 'section-unselected';
+                var sectionTitle = method || '';
+
                 var newCondition = $('<li class="node-input-condition"> \
-                    <i class="fa fa-bars" style="color:#4d4d4d;"></i>\
                     <select class="node-input-condition-method"> \
+                        <option value="">-select-</option> \
                     </select> \
                     <input type="text" class="node-input-condition-path" placeholder="Condition"> \
                     <button class="remove-condition node-input-remove-button"><i class="fa fa-trash-o" style="color:#FFF;"></i></button> \
                 </li>');
+
                 methods.forEach(function(methodItem) {
                     var selected = methodItem === method ? ' selected="selected"' : '';
                     newCondition.find('.node-input-condition-method').append('<option value="' + methodItem + '"' + selected + '>' + methodItem + '</option>');
+                    if (selected) {
+                        newCondition.prepend('<i class="fa fa-bars" style="color:#4d4d4d;"></i>');
+                    }
                 });
+
                 newCondition.find('.node-input-condition-path').val(path);
-                $('#sortable').append(newCondition);
-                
+
+                // Check if the section for the method already exists
+                var section = $('#' + sectionId);
+
+                if (section.length === 0) {
+                    // Create a new section for the method
+                    section = $('<div id="' + sectionId + '" class="method-section"><h3>' + sectionTitle + '</h3><ul class="sortable"></ul></div>');
+                    if (sectionId === "section-unselected") {
+                        section.find('ul').css('margin-left', '0');
+                    }
+                    if (method === "") {
+                        $('#unselected-method-container').prepend(section); // Add unselected section to the top
+                    } else {
+                        $('#sortable-container').append(section); // Add other sections to the bottom
+                    }
+
+                    section.find('ul.sortable').sortable({
+                        cursor: 'move',
+                        handle: '.fa-bars'
+                    });
+                }
+               
+                section.find('ul.sortable').append(newCondition);
+
+                // Event listener for method dropdown change
+                newCondition.find('.node-input-condition-method').change(function() {
+                    var newMethod = $(this).val();
+                    if (newMethod !== method) {
+                        // Remove from current section
+                        newCondition.remove();
+                        // Add to new section
+                        addCondition(newMethod, newCondition.find('.node-input-condition-path').val());
+                        // Remove the section if it becomes empty
+                        if (section.find('li').length === 0) {
+                            section.remove();
+                        }
+                    }
+                });
+
+                // Event listener for path input change
+                newCondition.find('.node-input-condition-path').on('input', function() {
+                    path = $(this).val(); // Update path
+                });
+
                 newCondition.find('.remove-condition').click(function() {
                     newCondition.remove();
+                    // Remove the section if it becomes empty
+                    if (section.find('li').length === 0) {
+                        section.remove();
+                    }
                 });
-
             }
 
-             // Make the conditions sortable
-             $('#sortable').sortable({
+            $('#add-route').click(function(e) {
+                e.preventDefault();
+                addCondition(); // Add condition with unselected method
+            });
+
+            $('#sortable-container').sortable({
                 axis: 'y',
             });
 
@@ -73,7 +130,9 @@
                 addCondition();
             } else {
                 conditions.forEach(function(condition) {
-                    addCondition(condition.path, condition.method);
+                    condition.paths.forEach(p => {
+                        addCondition(condition.method, p.value);
+                    });
                 });
             }
         },
@@ -84,18 +143,18 @@
                 var path = $(this).find('.node-input-condition-path').val().trim();
                 var method = $(this).find('.node-input-condition-method').val();
 
-                if (!path) {
+                if (!path || !method) {
                     isValid = false;
                     $(this).find('.node-input-condition-path').css('border', '1px solid red');
                 } else {
                     $(this).find('.node-input-condition-path').css('border', '');
                 }
 
-                conditions.push({ path: path, method: method });
+                addCondition(method, path);
             });
 
             if (!isValid) {
-                RED.notify("Condition path cannot be empty", "error");
+                RED.notify("Condition path or method cannot be empty", "error");
                 return false;
             }
 
@@ -104,8 +163,36 @@
                 return false; // Prevent the dialog from saving
             }
 
+            function addCondition(method, path) {
+                // Check if the method already exists in the array
+                let lastestInd;
+                if (conditions.length === 0) {
+                    lastestInd = -1
+                } else {
+                    lastestInd = conditions.at(-1).paths.at(-1).index
+                }
+
+                let condition = conditions.find(r => r.method === method);
+                if (condition) {
+                    condition.paths.push({
+                            value: path,
+                            index: lastestInd + 1
+                        });
+                } else {
+                    conditions.push({
+                        method: method,
+                        paths: [
+                            {
+                                value: path,
+                                index: lastestInd + 1
+                            }
+                        ]
+                    });
+                }
+            }
+
             this.conditions = conditions;
-            this.outputs = conditions.length;
+            this.outputs = conditions.reduce((sum, condition) => sum + condition.paths.length, 0);
 
             RED.notify("Save routing successfully", "success");
         }
@@ -122,7 +209,8 @@
             <button id="add-route" class="node-input-add-button">
                 <i class="fa fa-plus" style="color:#FFF;"></i> Add Route
             </button>
-            <ol id="sortable" class="node-input-conditions-container-list"></ol>
+            <div id="unselected-method-container"></div>
+            <div id="sortable-container"></div>
         </div>
     </div>
 </script>
@@ -155,6 +243,9 @@
         gap: 10px;
         align-items: center;
         cursor: move;
+    }
+    #node-input-conditions-container {
+        padding-bottom: 20px !important;
     }
     .node-input-conditions-container-list {
         margin: 0 0 10px !important;

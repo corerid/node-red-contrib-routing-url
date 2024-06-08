@@ -7,32 +7,30 @@ module.exports = function(RED) {
         node.on('input', function(msg) {
             var conditions = config.conditions || [];
             var results = new Array(conditions.length).fill(undefined);
-            let isMatched = false;
 
-            for (var index = 0; index < conditions.length; index++) {
-                var condition = conditions[index];
+            const methodConditions = conditions.filter(item => item.method === msg.req.method.toUpperCase());
+            if (methodConditions.length === 0 ) {
+                node.error("No matched route condition for method: " + msg.req.method)
+                return
+            }
+            const paths = methodConditions.flatMap(item => item.paths);
+
+            let isMatch = false;
+            for (const path of paths) {
                 let routeMatcher = {};
-                routeMatcher[condition.path] = condition.method;
+                routeMatcher[path.value.trim()] = true;
                 const matcher = createMatcher(routeMatcher)
 
-                if (condition.path.trim() === "") {
-                    node.error("Condition text cannot be empty", msg);
-                    return;
-                }
-
-                if (matcher(msg.req.url) && msg.req.method.toUpperCase() === condition.method) {
-                    isMatched = true;
-                    results[index] = msg;
-                    break;
+                if (matcher(msg.req.url)) {
+                    isMatch = true;
+                    results[path.index] = msg;
+                    node.send(results);
+                    return
                 }
             }
 
-            if (!isMatched) {
-                node.error("No matched route condition", msg);
-                return;
-            }
-
-            node.send(results);
+            node.error("No matched route condition", msg);
+            return
         });
     }
     RED.nodes.registerType("routing", URLRoutingNode);
